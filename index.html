@@ -217,6 +217,7 @@
     </div>
 </div>
 
+
 <script>
     let timeOffset = 0;
     let database = {
@@ -226,10 +227,13 @@
     let isAlarmActive = false;
     let audioInterval = null;
     let alarmDelaySeconds = 180; 
-    let audioCtx = null; // Menyimpan satu instance AudioContext global
+    let audioCtx = null; 
+    
+    // PERBAIKAN: Array untuk menyimpan ID token yang sudah dimatikan (di-mute) oleh user
+    let mutedAlarms = []; 
+    
     const namaHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
-    // Fungsi Inisialisasi Audio Context lewat Interaksi User (Membuka Kunci Browser)
     function initAudio() {
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -239,7 +243,6 @@
         }
     }
 
-    // Pasang Event Listener otomatis: Klik apa saja di layar akan langsung membuka kunci audio
     document.addEventListener('click', initAudio, { once: false });
 
     async function syncTime() {
@@ -321,7 +324,7 @@
         }
 
         const newItem = {
-            id: Date.now().toString(),
+            id: Date.now().toString(), // Menggunakan timestamp unik sebagai ID
             nama: namaIn.value,
             waktu: waktuIn.value
         };
@@ -336,6 +339,8 @@
 
     function deleteReminder(type, session, id) {
         database[type][session] = database[type][session].filter(item => item.id !== id);
+        // Hapus juga dari list mute jika ada
+        mutedAlarms = mutedAlarms.filter(mid => mid !== id);
         saveData();
     }
 
@@ -379,7 +384,6 @@
 
     function playTone() {
         try {
-            // Memastikan Audio Context telah terinisialisasi
             initAudio();
             if (!audioCtx) return;
 
@@ -387,28 +391,34 @@
             const gainNode = audioCtx.createGain();
 
             oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Frekuensi nada tinggi bip
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
             
             gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime);
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
             
             oscillator.start();
-            setTimeout(() => { oscillator.stop(); }, 350); // Durasi bip pendek
+            setTimeout(() => { oscillator.stop(); }, 350); 
         } catch(e) {
             console.error("Gagal menjalankan audio tone:", e);
         }
     }
 
-    function triggerAlarm(namaReminder) {
+    // Modifikasi fungsi trigger agar menerima ID token pengingat
+    let currentActiveAlarmId = null;
+    function triggerAlarm(namaReminder, id) {
         if (isAlarmActive) return; 
+        
+        // Cek apakah ID token ini sudah pernah di-mute oleh user di jendela waktu saat ini
+        if (mutedAlarms.includes(id)) return;
+
         isAlarmActive = true;
+        currentActiveAlarmId = id;
         
         document.body.classList.add('alarm-active');
         document.getElementById('mute-btn').style.display = 'block';
         document.getElementById('mute-btn').innerText = `ALARM REMINDER: ${namaReminder}\n\n(KLIK UNTUK MATIKAN SEMENTARA)`;
 
-        // Jalankan bunyi berulang secara stabil
         playTone();
         audioInterval = setInterval(playTone, 1000);
     }
@@ -418,6 +428,11 @@
         document.body.classList.remove('alarm-active');
         document.getElementById('mute-btn').style.display = 'none';
         if (audioInterval) clearInterval(audioInterval);
+        
+        // PERBAIKAN: Masukkan ID token yang sedang aktif ke daftar blacklist mute
+        if (currentActiveAlarmId && !mutedAlarms.includes(currentActiveAlarmId)) {
+            mutedAlarms.push(currentActiveAlarmId);
+        }
     }
 
     function coreEngineLoop() {
@@ -459,7 +474,9 @@
             const totalDetikTarget = (tJam * 3600) + (tMenit * 60);
             const diff = totalDetikTarget - totalDetikSekarang;
             
+            // Pembersihan otomatis: Jika target waktu utama sudah terlewat, hapus ID dari blacklist mute
             if (diff < 0) {
+                mutedAlarms = mutedAlarms.filter(id => id !== item.id);
                 return; 
             }
 
@@ -473,13 +490,10 @@
                 statusText = `Alarm akan berbunyi dalam ${menitSisa}m ${detikSisa}s`;
             } 
             else {
-                // Skenario Masuk Rentang Delay Jendela Target
                 statusText = `<span class="countdown-text">⚠️ Jendela Pembuatan Token! Sisa waktu: ${Math.floor(diff/60)}m ${diff%60}s</span>`;
                 
-                // FORCE TRIGGER: Mengaktifkan alarm jika berada di dalam rentang delay
-                if (!isAlarmActive) {
-                    triggerAlarm(item.nama);
-                }
+                // Kirimkan item.id ke fungsi pemicu alarm
+                triggerAlarm(item.nama, item.id);
             }
 
             const li = document.createElement('li');
@@ -505,3 +519,11 @@
         setInterval(syncTime, 600000);
     };
 </script>
+</body>
+</html>
+
+
+
+
+
+    
