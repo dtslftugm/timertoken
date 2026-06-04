@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Reminder System</title>
+    <title>Token Reminder System V2</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -13,6 +13,7 @@
             --accent-color: #00adb5;
             --alert-color: #ff2e63;
             --green-color: #00e676;
+            --edit-color: #f5a623;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
@@ -28,7 +29,6 @@
             min-height: 100vh;
         }
 
-        /* Flashing Animation */
         @keyframes flash-red {
             0%, 100% { background-color: var(--bg-color); }
             50% { background-color: #b30000; }
@@ -39,7 +39,6 @@
 
         .container { width: 100%; max-width: 1100px; }
 
-        /* Header & Clock */
         header {
             text-align: center;
             margin-bottom: 25px;
@@ -53,7 +52,6 @@
         #current-info { font-size: 1.2rem; margin-top: 5px; color: var(--text-muted); }
         #sync-status { font-size: 0.85rem; color: var(--green-color); margin-top: 5px; }
 
-        /* Alarm Overlay Button */
         #mute-btn {
             display: none;
             position: fixed;
@@ -71,10 +69,9 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.7);
         }
 
-        /* Config Grid */
         .grid-config {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
             gap: 20px;
             margin-bottom: 25px;
         }
@@ -91,7 +88,6 @@
         .session-section { margin-bottom: 15px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 8px; }
         .session-section h3 { font-size: 1rem; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* Form Controls */
         .form-inline { display: flex; gap: 8px; margin-bottom: 10px; }
         .form-inline input[type="text"] { flex: 2; }
         .form-inline input[type="time"] { flex: 1; }
@@ -107,7 +103,6 @@
         button.btn-add { background: var(--accent-color); color: #fff; font-weight: bold; cursor: pointer; border: none; }
         button.btn-add:hover { opacity: 0.9; }
 
-        /* List View */
         .reminder-list { list-style: none; }
         .reminder-item {
             display: flex;
@@ -120,10 +115,12 @@
             border-left: 4px solid var(--accent-color);
         }
         .reminder-item.active-today { border-left-color: var(--green-color); }
-        .reminder-item .actions button { background: var(--alert-color); border: none; font-size: 0.8rem; cursor: pointer; padding: 4px 8px; }
-        .reminder-item .time-tag { font-weight: bold; font-variant-numeric: tabular-nums; background: #333; padding: 2px 6px; border-radius: 4px; }
+        .reminder-item .actions { display: flex; align-items: center; gap: 5px; }
+        .reminder-item .actions button { border: none; font-size: 0.8rem; cursor: pointer; padding: 4px 8px; color: #fff; border-radius: 4px; }
+        .reminder-item .actions button.btn-delete { background: var(--alert-color); }
+        .reminder-item .actions button.btn-edit { background: var(--edit-color); }
+        .reminder-item .time-tag { font-weight: bold; font-variant-numeric: tabular-nums; background: #333; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }
 
-        /* Live Monitor Queue */
         .monitor-card { width: 100%; background: #1a2f3b; border: 1px solid var(--accent-color); margin-bottom: 20px; }
         .monitor-card h2 { border-bottom-color: var(--green-color); }
         .countdown-text { color: var(--alert-color); font-weight: bold; font-variant-numeric: tabular-nums; }
@@ -142,8 +139,7 @@
 
     <div class="card monitor-card">
         <h2>Antrean Pengingat Hari Ini (-3 Menit Target)</h2>
-        <ul id="today-queue" class="reminder-list">
-            </ul>
+        <ul id="today-queue" class="reminder-list"></ul>
     </div>
 
     <div class="grid-config">
@@ -198,8 +194,7 @@
 </div>
 
 <script>
-    // State Aplikasi
-    let timeOffset = 0; // Selisih milidetik antara jam lokal device dan internet
+    let timeOffset = 0;
     let database = {
         regular: { pagi: [], siang: [] },
         friday: { pagi: [], siang: [] }
@@ -208,38 +203,33 @@
     let audioInterval = null;
     const namaHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
-    // 1. Sinkronisasi Waktu dengan Internet (World Time API)
     async function syncTime() {
         const statusEl = document.getElementById('sync-status');
         try {
             const startLoad = Date.now();
-            // Menggunakan API zona Jakarta (UTC+7)
-            const response = await fetch('https://worldtimeapi.org/api/timezone/Asia/Jakarta');
+            // Menggunakan HTTPS API TimeApi.io yang mendukung CORS penuh untuk area Asia/Jakarta
+            const response = await fetch('https://timeapi.io/api/time/current/zone?timeZone=Asia/Jakarta');
             if(!response.ok) throw new Error("Gagal fetch API");
             
             const data = await response.json();
-            const internetTime = new Date(data.datetime).getTime();
-            
-            // Kompensasi latency dasar jaringan
+            // Parsing string ISO ke format milidetik timestamp
+            const internetTime = new Date(data.dateTime).getTime();
             const latency = (Date.now() - startLoad) / 2;
             
-            // Hitung selisih waktu aktual
             timeOffset = (internetTime + latency) - Date.now();
-            statusEl.textContent = "⏱️ Waktu sinkron dengan internet (UTC+7)";
+            statusEl.textContent = "⏱️ Waktu berhasil sinkron dengan internet (Format 24 Jam - Asia/Jakarta)";
             statusEl.style.color = "var(--green-color)";
         } catch (error) {
-            console.error("Gagal sinkronisasi waktu:", error);
-            statusEl.textContent = "⚠️ Gagal sinkronisasi internet. Menggunakan basis jam perangkat lokal.";
-            statusEl.style.color = "var(--alert-color)";
+            console.error("Gagal sinkronisasi waktu internet:", error);
+            statusEl.textContent = "⚠️ Menggunakan basis jam perangkat lokal (Pastikan jam OS Anda akurat).";
+            statusEl.style.color = "var(--edit-color)";
         }
     }
 
-    // Mendapatkan Objek Date yang sudah dikompensasi akurasinya
     function getAccurateDate() {
         return new Date(Date.now() + timeOffset);
     }
 
-    // 2. Manajemen Data (Local Storage)
     function loadData() {
         const localData = localStorage.getItem('token_reminder_db');
         if (localData) {
@@ -269,8 +259,6 @@
         };
 
         database[type][session].push(newItem);
-        
-        // Urutkan berdasarkan waktu terkecil ke terbesar
         database[type][session].sort((a,b) => a.waktu.localeCompare(b.waktu));
 
         namaIn.value = '';
@@ -283,7 +271,21 @@
         saveData();
     }
 
-    // 3. Render Interface Lists
+    function editReminder(type, session, id) {
+        const itemToEdit = database[type][session].find(item => item.id === id);
+        if (!itemToEdit) return;
+
+        // Pindahkan data ke form input di atas agar bisa diubah user
+        document.getElementById(`${type === 'regular' ? 'reg' : 'fri'}-${session}-nama`).value = itemToEdit.nama;
+        document.getElementById(`${type === 'regular' ? 'reg' : 'fri'}-${session}-waktu`).value = itemToEdit.waktu;
+
+        // Hapus entri lama dari antrean data agar setelah di-add tidak double
+        deleteReminder(type, session, id);
+        
+        // Fokuskan langsung ke input nama untuk kenyamanan user
+        document.getElementById(`${type === 'regular' ? 'reg' : 'fri'}-${session}-nama`).focus();
+    }
+
     function renderAllLists() {
         const sections = [
             { type: 'regular', session: 'pagi', elId: 'list-reg-pagi' },
@@ -302,7 +304,8 @@
                     <span>${item.nama}</span>
                     <div class="actions">
                         <span class="time-tag">${item.waktu}</span>
-                        <button onclick="deleteReminder('${sec.type}', '${sec.session}', '${item.id}')">Hapus</button>
+                        <button class="btn-edit" onclick="editReminder('${sec.type}', '${sec.session}', '${item.id}')">Edit</button>
+                        <button class="btn-delete" onclick="deleteReminder('${sec.type}', '${sec.session}', '${item.id}')">Hapus</button>
                     </div>
                 `;
                 ul.appendChild(li);
@@ -310,7 +313,6 @@
         });
     }
 
-    // 4. Audio Engine (Web Audio API)
     function playTone() {
         try {
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -318,7 +320,7 @@
             const gainNode = audioCtx.createGain();
 
             oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Frekuensi 880Hz (Bip tajam)
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
             
             gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime);
             oscillator.connect(gainNode);
@@ -327,7 +329,7 @@
             oscillator.start();
             setTimeout(() => { oscillator.stop(); }, 300);
         } catch(e) {
-console.log("Audio Context diblokir browser sebelum ada interaksi user click.");
+            console.log("Audio Context diblokir browser sebelum ada interaksi.");
         }
     }
 
@@ -353,12 +355,13 @@ console.log("Audio Context diblokir browser sebelum ada interaksi user click.");
     function coreEngineLoop() {
         const sekarang = getAccurateDate();
         
+        // Memastikan format tampilan jam digital selalu 24 jam penuh
         const jam = String(sekarang.getHours()).padStart(2, '0');
         const menit = String(sekarang.getMinutes()).padStart(2, '0');
         const detik = String(sekarang.getSeconds()).padStart(2, '0');
         document.getElementById('digital-clock').textContent = `${jam}:${menit}:${detik}`;
 
-        const hariIndex = Clinical_or_Day_Index = sekarang.getDay(); 
+        const hariIndex = sekarang.getDay(); 
         const isJumat = (hariIndex === 5);
         document.getElementById('current-info').textContent = `Hari Ini: ${namaHari[hariIndex]} | Mode Jadwal: ${isJumat ? 'Khusus Jum\'at' : 'Reguler'}`;
 
