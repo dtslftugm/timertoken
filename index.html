@@ -218,20 +218,53 @@
 </div>
 
 
+
 <script>
     let timeOffset = 0;
-    let database = {
-        regular: { pagi: [], siang: [] },
-        friday: { pagi: [], siang: [] }
+    
+    // DATA DEFAULT HARDCODED (Sesuai gambar jadwal operasional Anda)
+    const DEFAULT_DATABASE = {
+        regular: {
+            pagi: [
+                { id: "def_r_p1", nama: "Peserta Masuk", waktu: "07:00" },
+                { id: "def_r_p2", nama: "TKDU", waktu: "07:30" },
+                { id: "def_r_p3", nama: "POTENSI", waktu: "09:00" },
+                { id: "def_r_p4", nama: "MATA UJI 1", waktu: "09:45" },
+                { id: "def_r_p5", nama: "MATA UJI 2", waktu: "10:15" }
+            ],
+            siang: [
+                { id: "def_r_s1", nama: "Peserta Masuk", waktu: "12:30" },
+                { id: "def_r_s2", nama: "TKDU", waktu: "13:00" },
+                { id: "def_r_s3", nama: "POTENSI", waktu: "14:30" },
+                { id: "def_r_s4", nama: "MATA UJI 1", waktu: "15:15" },
+                { id: "def_r_s5", nama: "MATA UJI 2", waktu: "15:45" }
+            ]
+        },
+        friday: {
+            pagi: [
+                { id: "def_f_p1", nama: "Peserta Masuk", waktu: "07:00" },
+                { id: "def_f_p2", nama: "TKDU", waktu: "07:30" },
+                { id: "def_f_p3", nama: "POTENSI", waktu: "09:00" },
+                { id: "def_f_p4", nama: "MATA UJI 1", waktu: "09:45" },
+                { id: "def_f_p5", nama: "MATA UJI 2", waktu: "10:15" }
+            ],
+            siang: [
+                { id: "def_f_s1", nama: "Peserta Masuk", waktu: "13:15" },
+                { id: "def_f_s2", nama: "TKDU", waktu: "13:45" },
+                { id: "def_f_s3", nama: "POTENSI", waktu: "15:15" },
+                { id: "def_f_s4", nama: "MATA UJI 1", waktu: "16:00" },
+                { id: "def_f_s5", nama: "MATA UJI 2", waktu: "16:30" }
+            ]
+        }
     };
+
+    let database = { regular: { pagi: [], siang: [] }, friday: { pagi: [], siang: [] } };
     let isAlarmActive = false;
     let audioInterval = null;
     let alarmDelaySeconds = 180; 
     let audioCtx = null; 
-    
-    // PERBAIKAN: Array untuk menyimpan ID token yang sudah dimatikan (di-mute) oleh user
     let mutedAlarms = []; 
-    
+    let currentActiveAlarmId = null;
     const namaHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
     function initAudio() {
@@ -274,6 +307,10 @@
         const localData = localStorage.getItem('token_reminder_db');
         if (localData) {
             database = JSON.parse(localData);
+        } else {
+            // PERBAIKAN: Jika perangkat baru/kosong, klon data default hardcoded di atas
+            database = JSON.parse(JSON.stringify(DEFAULT_DATABASE));
+            localStorage.setItem('token_reminder_db', JSON.stringify(database));
         }
 
         const savedMin = localStorage.getItem('token_reminder_delay_min');
@@ -324,7 +361,7 @@
         }
 
         const newItem = {
-            id: Date.now().toString(), // Menggunakan timestamp unik sebagai ID
+            id: Date.now().toString(),
             nama: namaIn.value,
             waktu: waktuIn.value
         };
@@ -339,7 +376,6 @@
 
     function deleteReminder(type, session, id) {
         database[type][session] = database[type][session].filter(item => item.id !== id);
-        // Hapus juga dari list mute jika ada
         mutedAlarms = mutedAlarms.filter(mid => mid !== id);
         saveData();
     }
@@ -404,12 +440,8 @@
         }
     }
 
-    // Modifikasi fungsi trigger agar menerima ID token pengingat
-    let currentActiveAlarmId = null;
     function triggerAlarm(namaReminder, id) {
         if (isAlarmActive) return; 
-        
-        // Cek apakah ID token ini sudah pernah di-mute oleh user di jendela waktu saat ini
         if (mutedAlarms.includes(id)) return;
 
         isAlarmActive = true;
@@ -429,7 +461,6 @@
         document.getElementById('mute-btn').style.display = 'none';
         if (audioInterval) clearInterval(audioInterval);
         
-        // PERBAIKAN: Masukkan ID token yang sedang aktif ke daftar blacklist mute
         if (currentActiveAlarmId && !mutedAlarms.includes(currentActiveAlarmId)) {
             mutedAlarms.push(currentActiveAlarmId);
         }
@@ -474,7 +505,6 @@
             const totalDetikTarget = (tJam * 3600) + (tMenit * 60);
             const diff = totalDetikTarget - totalDetikSekarang;
             
-            // Pembersihan otomatis: Jika target waktu utama sudah terlewat, hapus ID dari blacklist mute
             if (diff < 0) {
                 mutedAlarms = mutedAlarms.filter(id => id !== item.id);
                 return; 
@@ -491,8 +521,6 @@
             } 
             else {
                 statusText = `<span class="countdown-text">⚠️ Jendela Pembuatan Token! Sisa waktu: ${Math.floor(diff/60)}m ${diff%60}s</span>`;
-                
-                // Kirimkan item.id ke fungsi pemicu alarm
                 triggerAlarm(item.nama, item.id);
             }
 
@@ -521,7 +549,6 @@
 </script>
 </body>
 </html>
-
 
 
 
