@@ -327,4 +327,90 @@
             oscillator.start();
             setTimeout(() => { oscillator.stop(); }, 300);
         } catch(e) {
-            console.log("Audio Context diblokir browser sebelum ada
+console.log("Audio Context diblokir browser sebelum ada interaksi user click.");
+        }
+    }
+
+    function triggerAlarm(namaReminder) {
+        if (isAlarmActive) return;
+        isAlarmActive = true;
+        
+        document.body.classList.add('alarm-active');
+        document.getElementById('mute-btn').style.display = 'block';
+        document.getElementById('mute-btn').innerText = `ALARM: ${namaReminder}\n(KLIK UNTUK MEMATIKAN)`;
+
+        playTone();
+        audioInterval = setInterval(playTone, 1000);
+    }
+
+    function stopAlarm() {
+        isAlarmActive = false;
+        document.body.classList.remove('alarm-active');
+        document.getElementById('mute-btn').style.display = 'none';
+        if (audioInterval) clearInterval(audioInterval);
+    }
+
+    function coreEngineLoop() {
+        const sekarang = getAccurateDate();
+        
+        const jam = String(sekarang.getHours()).padStart(2, '0');
+        const menit = String(sekarang.getMinutes()).padStart(2, '0');
+        const detik = String(sekarang.getSeconds()).padStart(2, '0');
+        document.getElementById('digital-clock').textContent = `${jam}:${menit}:${detik}`;
+
+        const hariIndex = Clinical_or_Day_Index = sekarang.getDay(); 
+        const isJumat = (hariIndex === 5);
+        document.getElementById('current-info').textContent = `Hari Ini: ${namaHari[hariIndex]} | Mode Jadwal: ${isJumat ? 'Khusus Jum\'at' : 'Reguler'}`;
+
+        const totalDetikSekarang = (sekarang.getHours() * 3600) + (sekarang.getMinutes() * 60) + sekarang.getSeconds();
+        const activeSet = isJumat ? database.friday : database.regular;
+        const totalHariIni = [...activeSet.pagi, ...activeSet.siang];
+
+        const queueUl = document.getElementById('today-queue');
+        queueUl.innerHTML = '';
+
+        if(totalHariIni.length === 0) {
+            queueUl.innerHTML = '<li style="color: var(--text-muted); font-style: italic; padding: 10px;">Belum ada jadwal token dimasukkan untuk kategori hari ini.</li>';
+        }
+
+        totalHariIni.forEach(item => {
+            const [tJam, tMenit] = item.waktu.split(':').map(Number);
+            const totalDetikTarget = (tJam * 3600) + (tMenit * 60);
+            const diff = totalDetikTarget - totalDetikSekarang;
+            let statusText = "";
+            
+            if (diff > 180) {
+                const menitSisa = Math.floor(diff / 60);
+                const detikSisa = diff % 60;
+                statusText = `Akan diingatkan dalam ${menitSisa}m ${detikSisa}s`;
+            } 
+            else if (diff <= 180 && diff >= 0) {
+                statusText = `<span class="countdown-text">⚠️ Jendela Pembuatan Token! Sisa waktu: ${Math.floor(diff/60)}m ${diff%60}s</span>`;
+                if (diff === 180) {
+                    triggerAlarm(item.nama);
+                }
+            } else {
+                statusText = `<span style="color: var(--text-muted);">Selesai / Terlewat</span>`;
+            }
+
+            const li = document.createElement('li');
+            li.className = 'reminder-item active-today';
+            li.innerHTML = `
+                <div>
+                    <strong>${item.nama}</strong> <small style="color:var(--text-muted);">[Target: ${item.waktu}]</small>
+                </div>
+                <div>${statusText}</div>
+            `;
+            queueUl.appendChild(li);
+        });
+    }
+
+    window.onload = function() {
+        loadData();
+        syncTime();
+        setInterval(coreEngineLoop, 1000);
+        setInterval(syncTime, 600000); // Sinkronisasi ulang jam internet tiap 10 menit
+    };
+</script>
+</body>
+</html>
