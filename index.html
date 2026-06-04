@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Reminder System V3</title>
+    <title>Token Reminder System V4</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -41,7 +41,7 @@
 
         header {
             text-align: center;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             background: var(--card-bg);
             padding: 20px;
             border-radius: 12px;
@@ -51,6 +51,22 @@
         #digital-clock { font-size: 3.5rem; font-weight: bold; color: var(--accent-color); font-variant-numeric: tabular-nums; }
         #current-info { font-size: 1.2rem; margin-top: 5px; color: var(--text-muted); }
         #sync-status { font-size: 0.85rem; color: var(--green-color); margin-top: 5px; }
+
+        /* Panel Global Setting Delay */
+        .delay-settings-bar {
+            background: #15222a;
+            border: 1px solid #224455;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .delay-inputs { display: flex; align-items: center; gap: 8px; }
+        .delay-inputs input { width: 70px; text-align: center; font-weight: bold; color: var(--accent-color); }
 
         #mute-btn {
             display: none;
@@ -137,6 +153,14 @@
         <div id="sync-status">Menghubungkan ke server waktu internet...</div>
     </header>
 
+    <div class="delay-settings-bar">
+        <span>⚙️ <strong>Setelan Jeda Waktu Alarm (Sebelum Jam Target):</strong></span>
+        <div class="delay-inputs">
+            <input type="number" id="global-delay-min" value="3" min="0" max="59" onchange="saveDelayConfig()"> Menit
+            <input type="number" id="global-delay-sec" value="0" min="0" max="59" onchange="saveDelayConfig()"> Detik
+        </div>
+    </div>
+
     <div class="card monitor-card">
         <h2 id="queue-title">Antrean Pengingat Hari Ini</h2>
         <ul id="today-queue" class="reminder-list"></ul>
@@ -194,7 +218,6 @@
 </div>
 
 
-
 <script>
     let timeOffset = 0;
     let database = {
@@ -203,6 +226,7 @@
     };
     let isAlarmActive = false;
     let audioInterval = null;
+    let alarmDelaySeconds = 180; // Default awal 3 menit (180 detik)
     const namaHari = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
     async function syncTime() {
@@ -230,17 +254,48 @@
         return new Date(Date.now() + timeOffset);
     }
 
+    // Load Data termasuk data konfigurasi jeda alarm kustom
     function loadData() {
         const localData = localStorage.getItem('token_reminder_db');
         if (localData) {
             database = JSON.parse(localData);
         }
+
+        const savedMin = localStorage.getItem('token_reminder_delay_min');
+        const savedSec = localStorage.getItem('token_reminder_delay_sec');
+        if (savedMin !== null && savedSec !== null) {
+            document.getElementById('global-delay-min').value = savedMin;
+            document.getElementById('global-delay-sec').value = savedSec;
+            updateDelaySeconds(parseInt(savedMin), parseInt(savedSec));
+        } else {
+            updateDelaySeconds(3, 0);
+        }
+
         renderAllLists();
     }
 
     function saveData() {
         localStorage.setItem('token_reminder_db', JSON.stringify(database));
         renderAllLists();
+    }
+
+    // Fungsi menyimpan perubahan jeda alarm ke localStorage
+    function saveDelayConfig() {
+        let min = parseInt(document.getElementById('global-delay-min').value) || 0;
+        let sec = parseInt(document.getElementById('global-delay-sec').value) || 0;
+        
+        // Validasi batasan input m/s
+        if(sec > 59) { sec = 59; document.getElementById('global-delay-sec').value = 59; }
+        if(sec < 0) { sec = 0; document.getElementById('global-delay-sec').value = 0; }
+        if(min < 0) { min = 0; document.getElementById('global-delay-min').value = 0; }
+
+        localStorage.setItem('token_reminder_delay_min', min);
+        localStorage.setItem('token_reminder_delay_sec', sec);
+        updateDelaySeconds(min, sec);
+    }
+
+    function updateDelaySeconds(m, s) {
+        alarmDelaySeconds = (m * 60) + s;
     }
 
     function addReminder(type, session) {
@@ -356,7 +411,7 @@
         const detik = String(sekarang.getSeconds()).padStart(2, '0');
         document.getElementById('digital-clock').textContent = `${jam}:${menit}:${detik}`;
 
-        const hariIndex = sekarang.getDay(); 
+        const hariIndex = Clinical_or_Day_Index = sekarang.getDay(); 
         const isJumat = (hariIndex === 5);
         document.getElementById('current-info').textContent = `Hari Ini: ${namaHari[hariIndex]} | Mode Jadwal: ${isJumat ? 'Khusus Jum\'at' : 'Reguler'}`;
 
@@ -387,7 +442,6 @@
             const totalDetikTarget = (tJam * 3600) + (tMenit * 60);
             const diff = totalDetikTarget - totalDetikSekarang;
             
-            // Sembunyikan jika waktu target utama sudah lewat sepenuhnya
             if (diff < 0) {
                 return; 
             }
@@ -395,19 +449,17 @@
             itemDitampilkan++;
             let statusText = "";
             
-            // LOGIKA BARU: Hitung mundur sisa waktu menuju alarm berbunyi (-3 menit sebelum target)
-            const detikMenujuAlarm = diff - 180; 
+            // LOGIKA DINAMIS: Nilai pengurang diganti dengan variabel alarmDelaySeconds input global
+            const detikMenujuAlarm = diff - alarmDelaySeconds; 
 
             if (detikMenujuAlarm > 0) {
-                // Skenario: Menunggu alarm berbunyi
                 const menitSisa = Math.floor(detikMenujuAlarm / 60);
                 const detikSisa = detikMenujuAlarm % 60;
                 statusText = `Alarm akan berbunyi dalam ${menitSisa}m ${detikSisa}s`;
             } 
-            else if (diff <= 180 && diff >= 0) {
-                // Skenario: Jendela alarm aktif berkedip (-3 menit hingga menit ke-0 target)
+            else if (diff <= alarmDelaySeconds && diff >= 0) {
                 statusText = `<span class="countdown-text">⚠️ Jendela Pembuatan Token! Sisa waktu: ${Math.floor(diff/60)}m ${diff%60}s</span>`;
-                if (diff === 180) {
+                if (diff === alarmDelaySeconds) {
                     triggerAlarm(item.nama);
                 }
             }
@@ -437,3 +489,4 @@
 </script>
 </body>
 </html>
+
