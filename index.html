@@ -195,7 +195,6 @@
 
 
 
-
 <script>
     let timeOffset = 0;
     let database = {
@@ -363,7 +362,6 @@
 
         const totalDetikSekarang = (sekarang.getHours() * 3600) + (sekarang.getMinutes() * 60) + sekarang.getSeconds();
         
-        // 1. Logika Pemisahan Sesi Dinamis Berdasarkan Jam Kerja Saat Ini (< 12:00 Pagi, >= 12:00 Siang)
         const jamSekarang = sekarang.getHours();
         let activeSet = isJumat ? database.friday : database.regular;
         let totalHariIni = [];
@@ -389,7 +387,7 @@
             const totalDetikTarget = (tJam * 3600) + (tMenit * 60);
             const diff = totalDetikTarget - totalDetikSekarang;
             
-            // 2. Filter Cerdas: Sembunyikan item dari antrean jika waktu target sudah lewat
+            // Sembunyikan jika waktu target utama sudah lewat sepenuhnya
             if (diff < 0) {
                 return; 
             }
@@ -397,12 +395,17 @@
             itemDitampilkan++;
             let statusText = "";
             
-            if (diff > 180) {
-                const menitSisa = Math.floor(diff / 60);
-                const detikSisa = diff % 60;
-                statusText = `Akan diingatkan dalam ${menitSisa}m ${detikSisa}s`;
+            // LOGIKA BARU: Hitung mundur sisa waktu menuju alarm berbunyi (-3 menit sebelum target)
+            const detikMenujuAlarm = diff - 180; 
+
+            if (detikMenujuAlarm > 0) {
+                // Skenario: Menunggu alarm berbunyi
+                const menitSisa = Math.floor(detikMenujuAlarm / 60);
+                const detikSisa = detikMenujuAlarm % 60;
+                statusText = `Alarm akan berbunyi dalam ${menitSisa}m ${detikSisa}s`;
             } 
             else if (diff <= 180 && diff >= 0) {
+                // Skenario: Jendela alarm aktif berkedip (-3 menit hingga menit ke-0 target)
                 statusText = `<span class="countdown-text">⚠️ Jendela Pembuatan Token! Sisa waktu: ${Math.floor(diff/60)}m ${diff%60}s</span>`;
                 if (diff === 180) {
                     triggerAlarm(item.nama);
@@ -434,9 +437,3 @@
 </script>
 </body>
 </html>
-
-
-
-
-    
-    
