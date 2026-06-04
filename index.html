@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Reminder System V2</title>
+    <title>Token Reminder System V3</title>
     <style>
         :root {
             --bg-color: #121212;
@@ -138,7 +138,7 @@
     </header>
 
     <div class="card monitor-card">
-        <h2>Antrean Pengingat Hari Ini (-3 Menit Target)</h2>
+        <h2 id="queue-title">Antrean Pengingat Hari Ini</h2>
         <ul id="today-queue" class="reminder-list"></ul>
     </div>
 
@@ -150,7 +150,7 @@
                 <h3>Sesi Pagi</h3>
                 <div class="form-inline">
                     <input type="text" id="reg-pagi-nama" placeholder="Nama Token/Reminder">
-                    <input type="time" id="reg-pagi-waktu">
+                    <input type="time" id="reg-pagi-waktu" step="60">
                     <button class="btn-add" onclick="addReminder('regular', 'pagi')">+</button>
                 </div>
                 <ul id="list-reg-pagi" class="reminder-list"></ul>
@@ -160,7 +160,7 @@
                 <h3>Sesi Siang</h3>
                 <div class="form-inline">
                     <input type="text" id="reg-siang-nama" placeholder="Nama Token/Reminder">
-                    <input type="time" id="reg-siang-waktu">
+                    <input type="time" id="reg-siang-waktu" step="60">
                     <button class="btn-add" onclick="addReminder('regular', 'siang')">+</button>
                 </div>
                 <ul id="list-reg-siang" class="reminder-list"></ul>
@@ -174,7 +174,7 @@
                 <h3>Sesi Pagi</h3>
                 <div class="form-inline">
                     <input type="text" id="fri-pagi-nama" placeholder="Nama Token/Reminder">
-                    <input type="time" id="fri-pagi-waktu">
+                    <input type="time" id="fri-pagi-waktu" step="60">
                     <button class="btn-add" onclick="addReminder('friday', 'pagi')">+</button>
                 </div>
                 <ul id="list-fri-pagi" class="reminder-list"></ul>
@@ -184,7 +184,7 @@
                 <h3>Sesi Siang</h3>
                 <div class="form-inline">
                     <input type="text" id="fri-siang-nama" placeholder="Nama Token/Reminder">
-                    <input type="time" id="fri-siang-waktu">
+                    <input type="time" id="fri-siang-waktu" step="60">
                     <button class="btn-add" onclick="addReminder('friday', 'siang')">+</button>
                 </div>
                 <ul id="list-fri-siang" class="reminder-list"></ul>
@@ -192,6 +192,9 @@
         </div>
     </div>
 </div>
+
+
+
 
 <script>
     let timeOffset = 0;
@@ -207,12 +210,10 @@
         const statusEl = document.getElementById('sync-status');
         try {
             const startLoad = Date.now();
-            // Menggunakan HTTPS API TimeApi.io yang mendukung CORS penuh untuk area Asia/Jakarta
             const response = await fetch('https://timeapi.io/api/time/current/zone?timeZone=Asia/Jakarta');
             if(!response.ok) throw new Error("Gagal fetch API");
             
             const data = await response.json();
-            // Parsing string ISO ke format milidetik timestamp
             const internetTime = new Date(data.dateTime).getTime();
             const latency = (Date.now() - startLoad) / 2;
             
@@ -275,14 +276,10 @@
         const itemToEdit = database[type][session].find(item => item.id === id);
         if (!itemToEdit) return;
 
-        // Pindahkan data ke form input di atas agar bisa diubah user
         document.getElementById(`${type === 'regular' ? 'reg' : 'fri'}-${session}-nama`).value = itemToEdit.nama;
         document.getElementById(`${type === 'regular' ? 'reg' : 'fri'}-${session}-waktu`).value = itemToEdit.waktu;
 
-        // Hapus entri lama dari antrean data agar setelah di-add tidak double
         deleteReminder(type, session, id);
-        
-        // Fokuskan langsung ke input nama untuk kenyamanan user
         document.getElementById(`${type === 'regular' ? 'reg' : 'fri'}-${session}-nama`).focus();
     }
 
@@ -355,7 +352,6 @@
     function coreEngineLoop() {
         const sekarang = getAccurateDate();
         
-        // Memastikan format tampilan jam digital selalu 24 jam penuh
         const jam = String(sekarang.getHours()).padStart(2, '0');
         const menit = String(sekarang.getMinutes()).padStart(2, '0');
         const detik = String(sekarang.getSeconds()).padStart(2, '0');
@@ -366,20 +362,39 @@
         document.getElementById('current-info').textContent = `Hari Ini: ${namaHari[hariIndex]} | Mode Jadwal: ${isJumat ? 'Khusus Jum\'at' : 'Reguler'}`;
 
         const totalDetikSekarang = (sekarang.getHours() * 3600) + (sekarang.getMinutes() * 60) + sekarang.getSeconds();
-        const activeSet = isJumat ? database.friday : database.regular;
-        const totalHariIni = [...activeSet.pagi, ...activeSet.siang];
+        
+        // 1. Logika Pemisahan Sesi Dinamis Berdasarkan Jam Kerja Saat Ini (< 12:00 Pagi, >= 12:00 Siang)
+        const jamSekarang = sekarang.getHours();
+        let activeSet = isJumat ? database.friday : database.regular;
+        let totalHariIni = [];
+        let namaSesiAktif = "";
+
+        if (jamSekarang < 12) {
+            totalHariIni = activeSet.pagi;
+            namaSesiAktif = "Sesi Pagi";
+        } else {
+            totalHariIni = activeSet.siang;
+            namaSesiAktif = "Sesi Siang";
+        }
+
+        document.getElementById('queue-title').textContent = `Antrean Pengingat Hari Ini (${namaSesiAktif})`;
 
         const queueUl = document.getElementById('today-queue');
         queueUl.innerHTML = '';
 
-        if(totalHariIni.length === 0) {
-            queueUl.innerHTML = '<li style="color: var(--text-muted); font-style: italic; padding: 10px;">Belum ada jadwal token dimasukkan untuk kategori hari ini.</li>';
-        }
+        let itemDitampilkan = 0;
 
         totalHariIni.forEach(item => {
             const [tJam, tMenit] = item.waktu.split(':').map(Number);
             const totalDetikTarget = (tJam * 3600) + (tMenit * 60);
             const diff = totalDetikTarget - totalDetikSekarang;
+            
+            // 2. Filter Cerdas: Sembunyikan item dari antrean jika waktu target sudah lewat
+            if (diff < 0) {
+                return; 
+            }
+
+            itemDitampilkan++;
             let statusText = "";
             
             if (diff > 180) {
@@ -392,8 +407,6 @@
                 if (diff === 180) {
                     triggerAlarm(item.nama);
                 }
-            } else {
-                statusText = `<span style="color: var(--text-muted);">Selesai / Terlewat</span>`;
             }
 
             const li = document.createElement('li');
@@ -406,14 +419,24 @@
             `;
             queueUl.appendChild(li);
         });
+
+        if(itemDitampilkan === 0) {
+            queueUl.innerHTML = `<li style="color: var(--text-muted); font-style: italic; padding: 10px;">Tidak ada sisa antrean aktif untuk ${namaSesiAktif} hari ini.</li>`;
+        }
     }
 
     window.onload = function() {
         loadData();
         syncTime();
         setInterval(coreEngineLoop, 1000);
-        setInterval(syncTime, 600000); // Sinkronisasi ulang jam internet tiap 10 menit
+        setInterval(syncTime, 600000);
     };
 </script>
 </body>
 </html>
+
+
+
+
+    
+    
